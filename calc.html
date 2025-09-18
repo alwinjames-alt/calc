@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Simple Calculator</title>
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      --bg: #f6f7fb;
+      --panel: #ffffff;
+      --accent: #4f46e5;
+      --muted: #6b7280;
+    }
+    body {
+      background: linear-gradient(180deg, var(--bg), #e9eefc);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 24px;
+    }
+    .calc {
+      width: 320px;
+      background: var(--panel);
+      box-shadow: 0 8px 30px rgba(46,60,80,0.12);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .display {
+      padding: 20px;
+      text-align: right;
+      background: linear-gradient(180deg, #fff, #fbfdff);
+      border-bottom: 1px solid #eef2ff;
+    }
+    .expr {
+      color: var(--muted);
+      font-size: 14px;
+      min-height: 18px;
+      word-break: break-all;
+    }
+    .result {
+      font-size: 32px;
+      font-weight: 600;
+      margin-top: 6px;
+    }
+    .keys {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      padding: 16px;
+      background: transparent;
+    }
+    button {
+      height: 56px;
+      border-radius: 8px;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(20,30,60,0.06);
+    }
+    .op { background: #eef2ff; color: var(--accent); }
+    .num { background: #f8fafc; color: #111827; }
+    .wide { grid-column: span 2; }
+    .accent { background: var(--accent); color: white; }
+    .secondary { background: #fff7ed; color: #b45309; }
+    button:active { transform: translateY(1px); }
+    .small { font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="calc" role="application" aria-label="Simple calculator">
+    <div class="display" aria-live="polite">
+      <div id="expression" class="expr"></div>
+      <div id="result" class="result">0</div>
+    </div>
+
+    <div class="keys">
+      <button class="secondary small" data-action="clear">C</button>
+      <button class="op small" data-action="back">⌫</button>
+      <button class="op" data-value="%">%</button>
+      <button class="op" data-value="/">÷</button>
+
+      <button class="num" data-value="7">7</button>
+      <button class="num" data-value="8">8</button>
+      <button class="num" data-value="9">9</button>
+      <button class="op" data-value="*">×</button>
+
+      <button class="num" data-value="4">4</button>
+      <button class="num" data-value="5">5</button>
+      <button class="num" data-value="6">6</button>
+      <button class="op" data-value="-">−</button>
+
+      <button class="num" data-value="1">1</button>
+      <button class="num" data-value="2">2</button>
+      <button class="num" data-value="3">3</button>
+      <button class="op" data-value="+">+</button>
+
+      <button class="num wide" data-value="0">0</button>
+      <button class="num" data-value=".">.</button>
+      <button class="accent" data-action="equals">=</button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const exprEl = document.getElementById('expression');
+      const resultEl = document.getElementById('result');
+
+      let expression = '';       // visible expression (for display)
+      let safeExpression = '';   // JS-evaluable expression
+
+      const buttons = document.querySelectorAll('button');
+      buttons.forEach(btn => btn.addEventListener('click', onButton));
+
+      // Keyboard support
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); evaluate(); return; }
+        if (e.key === 'Backspace') { e.preventDefault(); backspace(); return; }
+        if (e.key === 'Escape') { e.preventDefault(); clearAll(); return; }
+        const allowed = '0123456789.+-*/%()';
+        if (allowed.includes(e.key)) {
+          e.preventDefault();
+          append(e.key);
+        }
+      });
+
+      function onButton(e) {
+        const btn = e.currentTarget;
+        const val = btn.dataset.value;
+        const action = btn.dataset.action;
+
+        if (action === 'clear') return clearAll();
+        if (action === 'back') return backspace();
+        if (action === 'equals') return evaluate();
+        if (val) return append(val);
+      }
+
+      function append(char) {
+        // Map visible operators to JS equivalents for safeExpression
+        const map = { '×': '*', '÷': '/', '−': '-', '%': '%' };
+
+        // Prevent two operators in a row (except minus for negative)
+        const last = safeExpression.slice(-1);
+        const isOp = /[+\-*/%]/.test(char);
+        if (isOp && /[+\-*/%]/.test(last)) {
+          // replace last operator with new one (except allow - after operator)
+          if (char === '-' && last !== '-') {
+            // allow unary minus — just append
+          } else {
+            safeExpression = safeExpression.slice(0, -1);
+            expression = expression.slice(0, -1);
+          }
+        }
+
+        safeExpression += (map[char] || char);
+        expression += char;
+        updateDisplay();
+      }
+
+      function backspace() {
+        expression = expression.slice(0, -1);
+        safeExpression = safeExpression.slice(0, -1);
+        updateDisplay();
+      }
+
+      function clearAll() {
+        expression = '';
+        safeExpression = '';
+        resultEl.textContent = '0';
+        updateDisplay();
+      }
+
+      function evaluate() {
+        if (!safeExpression) return;
+        try {
+          // Replace '%' with '/100' when used as modulo or percentage
+          // We'll interpret trailing % as divide by 100 (50% -> 0.5)
+          // and 'x%y' as modulo (JS %) is fine.
+          // For simplicity, treat isolated '%' after a number as /100
+          let evalExpression = safeExpression.replace(/(\d+(\.\d+)?)%/g, '($1/100)');
+
+          // Avoid eval of unsafe characters (basic sanity check)
+          if (/[^0-9+\-*/().% ]/.test(evalExpression)) throw new Error('Invalid input');
+
+          const value = Function('"use strict"; return (' + evalExpression + ')')();
+          const rounded = (Math.round((value + Number.EPSILON) * 1e12) / 1e12);
+          resultEl.textContent = String(rounded);
+          // After evaluation, make result the new expression for further operations
+          expression = String(rounded);
+          safeExpression = String(rounded);
+        } catch (err) {
+          resultEl.textContent = 'Error';
+        }
+      }
+
+      function updateDisplay() {
+        exprEl.textContent = expression || '0';
+      }
+
+      // initialize
+      clearAll();
+    })();
+  </script>
+</body>
+</html>
